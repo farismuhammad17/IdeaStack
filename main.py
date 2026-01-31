@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import importlib
+import shutil
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
@@ -9,7 +10,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QSplitter, QTreeWidget, QLabel,
     QShortcut, QInputDialog, QTreeWidgetItem,
-    QMenu, QMessageBox
+    QMenu, QMessageBox, QFileDialog, QAction
 )
 
 class Sidebar(QTreeWidget):
@@ -83,31 +84,9 @@ class IdeaStack(QMainWindow):
         self.splitter.setSizes([200, 720])
 
         self.create_temp_json()
+        self.create_menubar()
 
-        for path in sorted(self.current_data["hierarchy"]):
-            parts = path.split("/")
-            parent_item = self.sidebar
-
-            for part in parts:
-                found_item = None
-
-                if parent_item == self.sidebar:
-                    count = parent_item.topLevelItemCount()
-                else:
-                    count = parent_item.childCount()
-                not_sidebar = parent_item != self.sidebar
-
-                for j in range(count):
-                    child = parent_item.child(j) if not_sidebar else parent_item.topLevelItem(j)
-                    if child.text(0) == part:
-                        found_item = child
-                        break
-
-                if found_item:
-                    parent_item = found_item
-                else:
-                    new_item = QTreeWidgetItem(parent_item, [part])
-                    parent_item = new_item
+        self.load_sidebar()
 
         self.sidebar.itemClicked.connect(self.load_stack_content)
 
@@ -306,7 +285,6 @@ class IdeaStack(QMainWindow):
     def create_temp_json(self):
         if not os.path.exists("temp.json"):
             default_scheme = {
-                "name": None,
                 "hierarchy": [],
                 "data": {}
             }
@@ -323,6 +301,81 @@ class IdeaStack(QMainWindow):
     def update_json(self):
         with open("temp.json", "w", encoding="utf-8") as file:
             json.dump(self.current_data, file, indent=4)
+
+    def create_menubar(self):
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu("File")
+
+        save_action = QAction("Save As", self)
+        save_action.setShortcut("Ctrl+Shift+S")
+        save_action.triggered.connect(self.save_project)
+        file_menu.addAction(save_action)
+
+        open_action = QAction("Open", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_project)
+        file_menu.addAction(open_action)
+
+    def save_project(self):
+        if self.workspace:
+            self.current_data = self.workspace.get_data()
+            self.update_json()
+
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Project", "", "JSON Files (*.json);;All Files (*)", options=options
+        )
+
+        if file_path:
+            shutil.copy2("temp.json", file_path)
+            QMessageBox.information(self, "Saved", "IdeaStack saved successfully")
+
+    def open_project(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Project", "", "JSON Files (*.json);;All Files (*)", options=options
+        )
+
+        if file_path:
+            shutil.copy2(file_path, "temp.json")
+
+            with open("temp.json", "r", encoding="utf-8") as file:
+                self.current_data = json.load(file)
+
+            self.sidebar.clear()
+            self.load_sidebar()
+
+            if self.workspace:
+                self.workspace.setParent(None)
+                self.workspace.deleteLater()
+                self.workspace = None
+            self.active_stack_name = None
+
+    def load_sidebar(self):
+        for path in sorted(self.current_data["hierarchy"]):
+            parts = path.split("/")
+            parent_item = self.sidebar
+
+            for part in parts:
+                found_item = None
+
+                if parent_item == self.sidebar:
+                    count = parent_item.topLevelItemCount()
+                else:
+                    count = parent_item.childCount()
+                not_sidebar = parent_item != self.sidebar
+
+                for j in range(count):
+                    child = parent_item.child(j) if not_sidebar else parent_item.topLevelItem(j)
+                    if child.text(0) == part:
+                        found_item = child
+                        break
+
+                if found_item:
+                    parent_item = found_item
+                else:
+                    new_item = QTreeWidgetItem(parent_item, [part])
+                    parent_item = new_item
 
     def get_full_path(self, item):
         parts = []

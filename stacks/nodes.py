@@ -327,7 +327,10 @@ class Stack(QGraphicsView):
             self.scale(zoom_out_factor, zoom_out_factor)
 
     def load_previous_data(self):
-        data = self.current_data["data"][self.stack_name]["content"]
+        data = self.current_data["data"][self.stack_name].get("content")
+
+        if not data:
+            return
 
         id_map = {}
         for n_data in data.get("nodes", []):
